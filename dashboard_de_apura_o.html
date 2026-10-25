@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Apuração Eleições - Tempo Real</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .bar-transition { transition: width 1s ease-in-out; }
+        .fade-in { animation: fadeIn 0.5s ease-in-out; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+
+    <!-- Cabeçalho -->
+    <header class="bg-indigo-900 text-white shadow-lg sticky top-0 z-50">
+        <div class="max-w-5xl mx-auto px-4 py-4 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <svg class="w-8 h-8 text-indigo-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                <div>
+                    <h1 class="text-xl font-bold leading-tight">Resultados Oficiais</h1>
+                    <p class="text-indigo-200 text-xs">Simulação de Apuração</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2 bg-indigo-800 px-3 py-1.5 rounded-full">
+                <span class="relative flex h-2.5 w-2.5">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                </span>
+                <span class="text-xs font-semibold tracking-wide uppercase text-indigo-50">Ao Vivo</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-4 py-6">
+        
+        <!-- Controles / Filtros -->
+        <section class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
+            <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Filtros de Localidade</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label for="uf" class="block text-sm font-medium text-slate-600 mb-1">Estado</label>
+                    <select id="uf" class="w-full bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2.5 transition-colors cursor-pointer outline-none">
+                        <option value="br">Brasil (Nacional)</option>
+                        <option value="sp" selected>São Paulo</option>
+                        <option value="rj">Rio de Janeiro</option>
+                        <option value="mg">Minas Gerais</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="cidade" class="block text-sm font-medium text-slate-600 mb-1">Município</label>
+                    <select id="cidade" class="w-full bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2.5 transition-colors cursor-pointer outline-none">
+                        <option value="00000" selected>Capital</option>
+                        <option value="11111">Interior A</option>
+                        <option value="22222">Interior B</option>
+                    </select>
+                </div>
+            </div>
+        </section>
+
+        <!-- Resumo da Apuração -->
+        <section class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 mb-6 relative overflow-hidden">
+            <div class="flex flex-col sm:flex-row justify-between sm:items-end mb-4 gap-2">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-800">Urnas Apuradas (Seções Totalizadas)</h2>
+                    <p class="text-sm text-slate-500" id="status-atualizacao">Aguardando dados...</p>
+                </div>
+                <div class="text-3xl font-black text-indigo-700" id="urnas-apuradas-texto">
+                    0,00%
+                </div>
+            </div>
+            
+            <div class="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
+                <div id="urnas-apuradas-barra" class="bg-indigo-600 h-3 rounded-full bar-transition" style="width: 0%"></div>
+            </div>
+        </section>
+
+        <!-- Lista de Candidatos -->
+        <section>
+            <h3 class="text-lg font-bold text-slate-800 mb-4 px-1">Resultados - Prefeito</h3>
+            <div id="candidatos-container" class="flex flex-col gap-4">
+                <!-- Cards injetados via JS -->
+            </div>
+        </section>
+    </main>
+
+    <script>
+        // =====================================================================
+        // 1. MOCK DO BACKEND (Simula os dados no formato do TSE)
+        // =====================================================================
+        
+        // Estado interno do nosso servidor fictício
+        let mockDB = {
+            pst: 45.12, // Percentual apurado inicial
+            candidatos: [
+                { id: 1, nm: 'ALEXANDRE MACHADO', cc: 'PXX - PARTIDO DO PROGRESSO FICTÍCIO', vap: 254000 },
+                { id: 2, nm: 'BEATRIZ SOUZA', cc: 'PYY - PARTIDO DA RENOVAÇÃO', vap: 215000 },
+                { id: 3, nm: 'CARLOS MENDES', cc: 'PZZ - COLIGAÇÃO UNIDOS', vap: 98000 },
+                { id: 4, nm: 'DANIELA COSTA', cc: 'PAA - PARTIDO DO FUTURO', vap: 45000 }
+            ]
+        };
+
+        // Função que simula o fetch() na URL do TSE
+        async function fetchDadosTSE(uf, cidadeCode) {
+            // Simula latência de rede (300ms a 800ms)
+            await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 500));
+
+            // Simula o progresso da eleição a cada requisição
+            if (mockDB.pst < 100) {
+                mockDB.pst = Math.min(100, mockDB.pst + (Math.random() * 2));
+                mockDB.candidatos.forEach(c => {
+                    // Adiciona votos aleatórios para simular urnas chegando
+                    c.vap += Math.floor(Math.random() * 1500);
+                });
+            }
+
+            // Calcula total de votos válidos para gerar a porcentagem (pvap)
+            const totalVap = mockDB.candidatos.reduce((acc, c) => acc + c.vap, 0);
+
+            // Formata os dados EXATAMENTE como o JSON simplificado do TSE retorna
+            const formatoTSE = {
+                pst: mockDB.pst.toFixed(2).replace('.', ','), // "pst": Percentual de seções totalizadas
+                cand: mockDB.candidatos.map(c => {
+                    const pvapNum = totalVap > 0 ? (c.vap / totalVap) * 100 : 0;
+                    return {
+                        nm: c.nm,                                // Nome
+                        cc: c.cc,                                // Partido/Coligação
+                        vap: String(c.vap),                      // Votos Apurados
+                        pvap: pvapNum.toFixed(2).replace('.', ','), // Percentual Votos
+                        st: (mockDB.pst >= 100 && pvapNum > 50) ? 'Eleito' : '' // Status (Simplificado)
+                    };
+                })
+            };
+
+            // O TSE entrega a lista já ordenada por votos na maior parte das vezes, 
+            // mas vamos garantir a ordenação aqui.
+            formatoTSE.cand.sort((a, b) => parseInt(b.vap) - parseInt(a.vap));
+
+            return formatoTSE;
+        }
+
+
+        // =====================================================================
+        // 2. LÓGICA DO FRONTEND (Consumindo e renderizando os dados)
+        // =====================================================================
+        
+        const container = document.getElementById('candidatos-container');
+        const txtUrnas = document.getElementById('urnas-apuradas-texto');
+        const barraUrnas = document.getElementById('urnas-apuradas-barra');
+        const txtStatus = document.getElementById('status-atualizacao');
+        const uFSelect = document.getElementById('uf');
+        const cidadeSelect = document.getElementById('cidade');
+
+        // Função de formatação de número (ex: 1000000 -> 1.000.000)
+        const formatarNum = (strNum) => parseInt(strNum).toLocaleString('pt-BR');
+
+        async function atualizarDashboard() {
+            try {
+                // Montaria a URL real baseada nos filtros
+                const uf = uFSelect.value;
+                const cidade = cidadeSelect.value;
+                // Exemplo de URL Real: `https://resultados.tse.jus.br/oficial/ele2024/.../${uf}/${uf}${cidade}...json`
+
+                // Chamada à API Mock
+                const dadosTSE = await fetchDadosTSE(uf, cidade);
+
+                // 1. Atualiza Status Geral (Urnas Apuradas)
+                txtUrnas.textContent = `${dadosTSE.pst}%`;
+                barraUrnas.style.width = `${dadosTSE.pst.replace(',', '.')}%`;
+                
+                const dataHora = new Date().toLocaleTimeString('pt-BR');
+                txtStatus.textContent = `Última atualização: hoje às ${dataHora}`;
+
+                // 2. Renderiza Lista de Candidatos
+                container.innerHTML = ''; // Limpa atual
+
+                dadosTSE.cand.forEach((candidato, index) => {
+                    const isPrimeiro = index === 0;
+                    const pvapFloat = parseFloat(candidato.pvap.replace(',', '.'));
+                    
+                    // Cores dinâmicas: verde para o 1º, cinza para os demais
+                    const corBarra = isPrimeiro ? 'bg-emerald-500' : 'bg-slate-400';
+                    const corBorda = isPrimeiro ? 'border-emerald-200 shadow-emerald-50' : 'border-slate-200';
+                    const badgeEleito = candidato.st === 'Eleito' 
+                        ? `<span class="ml-2 bg-emerald-100 text-emerald-800 text-xs font-bold px-2 py-0.5 rounded uppercase">Matematicamente Eleito</span>` 
+                        : '';
+
+                    const cardHTML = `
+                        <div class="bg-white rounded-xl shadow-sm border ${corBorda} p-4 flex flex-col md:flex-row gap-4 items-center fade-in">
+                            
+                            <!-- Posição e Informações -->
+                            <div class="flex-1 w-full flex items-center gap-4">
+                                <div class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-500 text-sm">
+                                    ${index + 1}º
+                                </div>
+                                <div>
+                                    <h4 class="text-lg font-bold text-slate-800 leading-tight">
+                                        ${candidato.nm} ${badgeEleito}
+                                    </h4>
+                                    <p class="text-xs font-medium text-slate-500 mt-0.5">${candidato.cc}</p>
+                                </div>
+                            </div>
+
+                            <!-- Barra de Progresso do Candidato -->
+                            <div class="flex-1 w-full flex flex-col justify-center">
+                                <div class="flex justify-between text-sm mb-1">
+                                    <span class="font-bold text-slate-700">${candidato.pvap}%</span>
+                                    <span class="text-slate-500">${formatarNum(candidato.vap)} votos</span>
+                                </div>
+                                <div class="w-full bg-slate-100 rounded-full h-2">
+                                    <div class="${corBarra} h-2 rounded-full bar-transition" style="width: ${pvapFloat}%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    container.insertAdjacentHTML('beforeend', cardHTML);
+                });
+
+            } catch (error) {
+                console.error("Erro ao buscar dados da eleição:", error);
+                txtStatus.textContent = "Erro ao conectar com o servidor. Tentando novamente...";
+            }
+        }
+
+        // =====================================================================
+        // 3. INICIALIZAÇÃO E EVENTOS
+        // =====================================================================
+
+        // Carrega imediatamente ao abrir a página
+        atualizarDashboard();
+
+        // Configura o Polling (Pooling real costuma ser a cada 30~60 seg)
+        // Colocado em 5 segundos apenas para o efeito visual da simulação
+        let pollingTimer = setInterval(atualizarDashboard, 5000);
+
+        // Eventos nos filtros simulando a mudança de URL e cidade
+        const reiniciarSimulacao = () => {
+            // Efeito visual de carregamento
+            container.innerHTML = '<div class="text-center text-slate-400 py-8">Carregando novos dados...</div>';
+            
+            // Reseta a simulação
+            mockDB.pst = Math.floor(Math.random() * 30); // Volta o percentual para um número baixo
+            mockDB.candidatos.forEach(c => c.vap = Math.floor(Math.random() * 10000));
+            
+            // Força atualização imediata e reinicia o timer
+            clearInterval(pollingTimer);
+            atualizarDashboard();
+            pollingTimer = setInterval(atualizarDashboard, 5000);
+        };
+
+        uFSelect.addEventListener('change', reiniciarSimulacao);
+        cidadeSelect.addEventListener('change', reiniciarSimulacao);
+
+    </script>
+</body>
+</html>
